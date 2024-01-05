@@ -102,14 +102,20 @@ export type NodeEntry = {
 	schemaAttributeKeys: Set<string>
 }
 export type NeogmaCtorArgs = ConstructorParameters<typeof Neogma>
-export type GraphToWizardArgs<
+export type GraphToCipherMigratorConstructor<
 	TNode extends HasType,
 	TEdge extends HasType,
 	TAttributes extends Attributes,
 > = {
 	graph: GraphWithType<TNode, TEdge, TAttributes>
 	connectionDetails: NeogmaCtorArgs[0]
-	options?: NeogmaCtorArgs[1]
+	neo4jOptions?: NeogmaCtorArgs[1]
+	whiteListSettings: "ignore" | WhiteListSettings
+}
+
+export type WhiteListSettings = {
+	whiteList: string[]
+	caseInsensitive: boolean
 }
 export type Partition<T> = {
 	key: string
@@ -136,4 +142,3 @@ export type IntrospectorConfigs = {
 	graphEdgeName?: string
 }
 export type Neo4jStruct = Awaited<ReturnType<typeof toGenericStruct>>
-

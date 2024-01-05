@@ -1,8 +1,12 @@
 import { Neogma } from "neogma"
 import { type Transaction } from "neo4j-driver"
 
-import { type HasType, type GraphWithType } from "./types"
-import { type GraphToWizardArgs as GraphToCipherMigratorConstructor } from "./types"
+import {
+	type HasType,
+	type GraphWithType,
+	type WhiteListSettings,
+} from "./types"
+import { type GraphToCipherMigratorConstructor } from "./types"
 import EventEmitter from "events"
 import { nodeDataPipeline } from "./nodeDataPipeline"
 import { edgeDataPipeline } from "./edgeDataPipeline"
@@ -14,6 +18,7 @@ import {
 import { type Attributes } from "graphology-types"
 import mapValues from "lodash/mapValues"
 import { collectionFromObject } from "@tbui17/utils"
+import { MigrationError, WhiteListError } from "."
 
 export function retrieveGraphData<
 	TNode extends HasType,
@@ -37,11 +42,6 @@ export function createUniqueIndexForNodeType(type: string) {
 	const node = `n${type}`
 	const constraintName = `unique_id_${type}`
 	return `CREATE CONSTRAINT ${constraintName} IF NOT EXISTS FOR (${node}:${type}) REQUIRE ${node}.id IS UNIQUE`
-}
-
-type WhiteListSettings = {
-	whiteList: string[]
-	caseInsensitive: boolean
 }
 
 export const applyTimeLogging = (emitter: EventEmitter) => {
@@ -74,7 +74,7 @@ export class GraphToCypherMigrator<
 		TNode,
 		TEdge,
 		TAttributes
-	>["options"]
+	>["neo4jOptions"]
 
 	public eventEmitter = new EventEmitter()
 	public client: Neogma
@@ -83,21 +83,24 @@ export class GraphToCypherMigrator<
 	constructor({
 		connectionDetails,
 		graph,
-
-		options,
+		whiteListSettings,
+		neo4jOptions,
 	}: GraphToCipherMigratorConstructor<TNode, TEdge, TAttributes>) {
 		this.graph = graph
 		this.connectionDetails = connectionDetails
-		this.options = options
+		this.options = neo4jOptions
 		this.client = new Neogma(this.connectionDetails, this.options)
+		this.whiteListSettings =
+			whiteListSettings === "ignore" ? null : whiteListSettings
 	}
 
 	public run(): ReturnType<typeof this.runImpl> {
-		this.validate()
-		return this.runImpl()
-	}
-
-	public runDangerously(): ReturnType<typeof this.runImpl> {
+		if (
+			this.whiteListSettings !== null ||
+			this.whiteListSettings !== undefined
+		) {
+			this.validate()
+		}
 		return this.runImpl()
 	}
 
@@ -107,8 +110,9 @@ export class GraphToCypherMigrator<
 
 	private validate() {
 		const lists = this.getWhiteListData()
+		const whiteListSet = new Set(lists.whiteList)
 		const invalidTypes = lists.types.filter(
-			(type) => !lists.whiteList.includes(type)
+			(type) => !whiteListSet.has(type)
 		)
 
 		if (!invalidTypes.length) {
@@ -121,14 +125,12 @@ export class GraphToCypherMigrator<
 			invalidTypes,
 		}
 		const stringMessage = JSON.stringify(message, null, 2)
-		throw new Error(stringMessage)
+		throw new WhiteListError(stringMessage)
 	}
 
 	private getWhiteListData() {
 		if (!this.whiteListSettings) {
-			throw new Error(
-				"White list settings have not been set. Use setWhiteListSettings() to configure the white list."
-			)
+			throw new WhiteListError("White list settings have not been set.")
 		}
 		const lists = {
 			whiteList: this.whiteListSettings.whiteList,
@@ -203,7 +205,7 @@ export class GraphToCypherMigrator<
 		try {
 			const res = await submitter.run()
 			if (res.rejected.size) {
-				throw new Error("Error in node creation", {
+				throw new MigrationError("Error in node creation", {
 					cause: res.rejected.toJSON(),
 				})
 			}
@@ -252,7 +254,7 @@ export class GraphToCypherMigrator<
 			if (!(e instanceof Error)) {
 				throw e
 			}
-			throw new Error(
+			throw new MigrationError(
 				`Failed to create unique index on nodes with statement: ${indexingStatement}`,
 				{ cause: e }
 			)
