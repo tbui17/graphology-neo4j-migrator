@@ -1,5 +1,9 @@
 import { Neogma } from "neogma"
-import { type Transaction } from "neo4j-driver"
+import {
+	type QueryResult,
+	type RecordShape,
+	type Transaction,
+} from "neo4j-driver"
 
 import {
 	type HasType,
@@ -19,6 +23,8 @@ import { type Attributes } from "graphology-types"
 import mapValues from "lodash/mapValues"
 import { collectionFromObject } from "@tbui17/utils"
 import { MigrationError, WhiteListError } from "."
+import { type LiteralUnion } from "type-fest"
+import { type Collection } from "@discordjs/collection"
 
 export function retrieveGraphData<
 	TNode extends HasType,
@@ -55,6 +61,21 @@ export const applyTimeLogging = (emitter: EventEmitter) => {
 	})
 }
 
+type EventTypes = LiteralUnion<
+	"start" | "indexesCreated" | "nodesCreated" | "edgesCreated" | "end",
+	string
+>
+
+interface MigratorEventEmitter extends EventEmitter {
+	on(event: EventTypes, listener: (...args: any[]) => void): this
+}
+
+export interface MigratorReturnType {
+	indexTransactionResult: QueryResult<RecordShape>[]
+	nodeTransactionResult: Collection<string, QueryResult<RecordShape>>
+	edgeTransactionResult: Collection<string, QueryResult<RecordShape>>
+}
+
 export class GraphToCypherMigrator<
 	TNode extends HasType,
 	TEdge extends HasType,
@@ -76,7 +97,7 @@ export class GraphToCypherMigrator<
 		TAttributes
 	>["neo4jOptions"]
 
-	public eventEmitter = new EventEmitter()
+	public eventEmitter: MigratorEventEmitter = new EventEmitter()
 	public client: Neogma
 	private cache: ReturnType<typeof retrieveGraphData> | null = null
 	private whiteListSettings: WhiteListSettings | null = null
@@ -94,7 +115,7 @@ export class GraphToCypherMigrator<
 			whiteListSettings === "ignore" ? null : whiteListSettings
 	}
 
-	public run(): ReturnType<typeof this.runImpl> {
+	public run(): Promise<MigratorReturnType> {
 		if (
 			this.whiteListSettings !== null ||
 			this.whiteListSettings !== undefined
@@ -155,7 +176,7 @@ export class GraphToCypherMigrator<
 		this.cache = null
 	}
 
-	private async runImpl() {
+	private async runImpl(): Promise<MigratorReturnType> {
 		this.eventEmitter.emit("start")
 		const indexTransactionResult = await this.runCreateIndexesTransaction()
 		this.eventEmitter.emit("indexesCreated", indexTransactionResult)
@@ -165,6 +186,7 @@ export class GraphToCypherMigrator<
 		this.eventEmitter.emit("edgesCreated", edgeTransactionResult)
 		this.eventEmitter.emit("end")
 		this.clearCache()
+
 		await this.client.driver.close()
 		return {
 			indexTransactionResult,
