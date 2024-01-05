@@ -6,11 +6,11 @@ const primitiveArray = z.array(primitives)
 
 export function stringifyNestedObjects<T extends object>(obj: T) {
 	return mapValues(obj, (val) => {
-		return helper(val)
+		return stringifyNestedObjectsImpl(val)
 	})
 }
 
-function helper(val: any) {
+function stringifyNestedObjectsImpl(val: any) {
 	if (val instanceof Date) {
 		return val
 	}
@@ -30,31 +30,4 @@ function helper(val: any) {
 		return val
 	}
 	return typeof val === "object" && val !== null ? JSON.stringify(val) : val
-}
-
-type DeploymentConfig = {
-	development: {
-		server: string
-		port: number
-		features: {
-			enableDebug: boolean
-			loggingLevel: string
-			container: {
-				name: string
-				image: string
-			}
-		}
-	}
-	production: {
-		server: string
-		port: number
-		features: {
-			enableDebug: boolean
-			loggingLevel: string
-			container: {
-				name: string
-				image: string
-			}
-		}
-	}
 }

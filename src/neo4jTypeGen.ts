@@ -5,11 +5,11 @@ import { z } from "zod"
 import { postDFSObjectTraversal } from "@tbui17/iteration-utilities"
 
 import { zodGuard } from "@tbui17/utils"
-import { type Driver } from "neo4j-driver"
-import { type ConditionalExcept } from "type-fest"
-import { cypherToGraph } from "graphology-neo4j"
-import type Graph from "graphology"
 import { pickToArray } from "@tbui17//iteration-utilities"
+import { type TypeProperty } from "./types"
+import { type IntrospectorConfigs } from "./types"
+import { type Neo4jStruct } from "./types"
+import { type Driver } from "neo4j-driver"
 
 function createObjectTypeEntry({
 	name,
@@ -30,8 +30,6 @@ function formatTypeName(typeName: string): string {
 	return typeName
 }
 
-type Neo4jStruct = Awaited<ReturnType<typeof toGenericStruct>>
-
 const propertySchema = z.object({
 	name: z.string(),
 	mandatory: z.boolean(),
@@ -40,99 +38,23 @@ const propertySchema = z.object({
 
 const baseTypes = new Set(["string", "number", "boolean", "date"])
 
-type Configs = {
-	driver: Driver
-	typeFileDirectory: string
-	idFieldName?: string
-	typeFieldName?: string
-	labelFieldName?: string
-	typeFieldDelimiter?: string
-	graphName?: string
-	graphNodeName?: string
-	graphEdgeName?: string
-}
-type OptionalKeysHelper<T> = {
-	[K in keyof T]-?: T extends Record<K, T[K]> ? never : T[K]
-}
-type OptionalKeys<T> = ConditionalExcept<OptionalKeysHelper<T>, never>
+export class Neo4jIntrospector {
+	constructor(public driver: Driver) {}
 
-async function generateGraph(configs: Required<Configs>) {
-	const query = `MATCH (n)-[r]-(m)
-RETURN n, r, m
-
-UNION
-
-MATCH (n)
-WHERE NOT (n)--()
-RETURN n, NULL as r, NULL as m
-`
-	const graph = await cypherToGraph(
-		{
-			driver: configs.driver,
-		},
-		query,
-		undefined,
-		{
-			id: configs.idFieldName,
-			labels: configs.labelFieldName,
-			type: configs.typeFieldName,
-		}
-	)
-
-	graph.updateEachNodeAttributes((_node, attr) => {
-		const labelValue = attr[configs.labelFieldName]
-		if (Array.isArray(labelValue)) {
-			attr[configs.typeFieldName] = labelValue.join(
-				configs.typeFieldDelimiter
-			)
-		}
-		return attr
-	})
-	return graph
-}
-
-const baseConfigs: OptionalKeys<Configs> = {
-	idFieldName: "_id",
-	typeFieldName: "_type",
-	labelFieldName: "_labels",
-	typeFieldDelimiter: "_",
-	graphName: "Graph2",
-	graphNodeName: "GraphNode",
-	graphEdgeName: "GraphEdge",
-}
-
-export class GraphologyNeo4jGenerator {
-	private configs
-	private introspector
-
-	constructor(configs: Configs) {
-		this.configs = {
-			...baseConfigs,
-			...configs,
-		}
-		this.introspector = new Neo4jIntrospector(this.configs)
-	}
-
-	async generateGraphTypes() {
-		await this.introspector.run()
-	}
-
-	async generateGraph<TGraph extends Graph = Graph>() {
-		const graph = await generateGraph(this.configs)
-		return graph as TGraph
-	}
-
-	async closeDriver() {
-		await this.configs.driver.close()
+	async fetch() {
+		return toGenericStruct(() => this.driver.session())
 	}
 }
 
-class Neo4jIntrospector {
+export class Neo4jTypeGen {
 	private project: Project
 	private file: SourceFile
 	private fields
 
-	constructor(public configs: Required<Configs>) {
+	constructor(
+		public configs: Required<IntrospectorConfigs>,
+		private introspector = new Neo4jIntrospector(configs.driver)
+	) {
 		this.project = new Project()
 		this.file = this.project.createSourceFile(
 			this.configs.typeFileDirectory,
@@ -149,40 +71,34 @@ class Neo4jIntrospector {
 	}
 
 	async run() {
-		const data = await toGenericStruct(() => this.configs.driver.session())
+		const data = await this.introspector.fetch()
+		this.generateType(data)
+		this.save()
+	}
 
+	private save() {
+		this.file.saveSync()
+	}
+
+	generateType(data: Neo4jStruct) {
 		data.nodes = _.mapKeys(data.nodes, (_v, k) => {
 			return k.slice(2, -1)
 		})
-		zodGuard(propertySchema,{})
 
 		postDFSObjectTraversal(data, (ctx) => {
 			if (!ctx.isRecord() || !zodGuard(propertySchema, ctx.context)) {
 				return
 			}
-			ctx.merge({
-				types: ctx.context.types.map((s) => {
-					s = s.toLowerCase()
-					if (baseTypes.has(s)) {
-						return s
-					}
-					if (s === "list") {
-						return "unknown[]"
-					}
-					return "unknown"
-				}),
+			ctx.context.types = ctx.context.types.map((s) => {
+				s = s.toLowerCase()
+				if (baseTypes.has(s)) {
+					return s
+				}
+				if (s === "list") {
+					return "unknown[]"
+				}
+				return "unknown"
 			})
-
-			// ctx.context.types = ctx.context.types.map((s) => {
-			// 	s = s.toLowerCase()
-			// 	if (baseTypes.has(s)) {
-			// 		return s
-			// 	}
-			// 	if (s === "list") {
-			// 		return "unknown[]"
-			// 	}
-			// 	return "unknown"
-			// })
 		})
 
 		this.file.addImportDeclaration({
@@ -200,8 +116,7 @@ class Neo4jIntrospector {
 		this.writeAggregateUnionType(keys.nodes, "Node")
 		this.writeAggregateUnionType(keys.relationships, "Edge")
 		this.createGraphType()
-
-		await this.file.save()
+		return this.file.print()
 	}
 
 	private writeAggregateUnionType(
@@ -309,10 +224,4 @@ class Neo4jIntrospector {
 			type: `Graph<${this.configs.graphNodeName},${this.configs.graphEdgeName}>`,
 		})
 	}
-}
-
-type TypeProperty = {
-	name: string
-	types: string[]
-	mandatory: boolean
 }

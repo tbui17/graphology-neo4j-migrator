@@ -1,6 +1,9 @@
+import { SwapBuilder } from "@tbui17/utils"
 import { type OrderResolver as OrderResolver } from "./types"
 import { type OrderResolverReturn } from "./types"
 import { type HasType } from "./types"
+
+
 
 export const orderResolver: OrderResolver = (
 	source: string,
@@ -16,10 +19,10 @@ export const orderResolver: OrderResolver = (
 	}
 
 	if (sourceAttributes.type > targetAttributes.type) {
-		result.source = target
-		result.sourceAttributes = targetAttributes
-		result.target = source
-		result.targetAttributes = sourceAttributes
+		return new SwapBuilder(result)
+			.swap("source", "target")
+			.swap("sourceAttributes", "targetAttributes")
+			.build()
 	}
 	return result
 }

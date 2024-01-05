@@ -5,6 +5,10 @@ import { type Attributes } from "graphology-types"
 import { type Collection } from "@discordjs/collection"
 import { type Neogma } from "neogma"
 
+import { type ConditionalExcept } from "type-fest"
+import { type Driver } from "neo4j-driver"
+import { type toGenericStruct } from "@neo4j/introspector"
+
 export type EdgeBuilderArgs = {
 	sourceType: string
 	targetType: string
@@ -111,3 +115,25 @@ export type Partition<T> = {
 	key: string
 	value: T
 }[]
+export type OptionalKeys<T> = ConditionalExcept<OptionalKeysHelper<T>, never>
+export type OptionalKeysHelper<T> = {
+	[K in keyof T]-?: T extends Record<K, T[K]> ? never : T[K]
+}
+export type TypeProperty = {
+	name: string
+	types: string[]
+	mandatory: boolean
+}
+export type IntrospectorConfigs = {
+	driver: Driver
+	typeFileDirectory: string
+	idFieldName?: string
+	typeFieldName?: string
+	labelFieldName?: string
+	typeFieldDelimiter?: string
+	graphName?: string
+	graphNodeName?: string
+	graphEdgeName?: string
+}
+export type Neo4jStruct = Awaited<ReturnType<typeof toGenericStruct>>
+

@@ -4,7 +4,8 @@ import { type Transaction } from "neo4j-driver"
 import { type HasType, type GraphWithType } from "./types"
 import { type GraphToWizardArgs as GraphToCipherMigratorConstructor } from "./types"
 import EventEmitter from "events"
-import { buildEdges, buildNodes } from "./getGraphData"
+import { nodeDataPipeline } from "./nodeDataPipeline"
+import { edgeDataPipeline } from "./edgeDataPipeline"
 import {
 	EdgeResultSubmitter,
 	NodeResultSubmitter,
@@ -19,8 +20,8 @@ export function retrieveGraphData<
 	TEdge extends HasType,
 	TAttributes extends Attributes,
 >(graph: GraphWithType<TNode, TEdge, TAttributes>) {
-	const nodes = buildNodes([...graph.nodeEntries()])
-	const edges = buildEdges([...graph.edgeEntries()])
+	const nodes = nodeDataPipeline([...graph.nodeEntries()])
+	const edges = edgeDataPipeline([...graph.edgeEntries()])
 	const indexStatements = nodes
 		.getTypes()
 		.map((type) => createUniqueIndexForNodeType(type))
