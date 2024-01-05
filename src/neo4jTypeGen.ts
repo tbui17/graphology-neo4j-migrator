@@ -41,7 +41,7 @@ const baseTypes = new Set(["string", "number", "boolean", "date"])
 export class Neo4jIntrospector {
 	constructor(public driver: Driver) {}
 
-	async fetch() {
+	async fetch(): Promise<Neo4jStruct> {
 		return toGenericStruct(() => this.driver.session())
 	}
 }
