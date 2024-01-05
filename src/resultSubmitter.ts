@@ -26,7 +26,7 @@ export abstract class ResultSubmitter<K = string> {
 		public shouldValidate = true
 	) {}
 
-	async run() {
+	async run(): ReturnType<typeof this.submitResult> {
 		return await this.submitResult()
 	}
 

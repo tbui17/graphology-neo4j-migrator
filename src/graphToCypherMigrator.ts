@@ -92,12 +92,12 @@ export class GraphToCypherMigrator<
 		this.client = new Neogma(this.connectionDetails, this.options)
 	}
 
-	public run() {
+	public run(): ReturnType<typeof this.runImpl> {
 		this.validate()
 		return this.runImpl()
 	}
 
-	public runDangerously() {
+	public runDangerously(): ReturnType<typeof this.runImpl> {
 		return this.runImpl()
 	}
 
