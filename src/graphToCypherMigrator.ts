@@ -111,22 +111,29 @@ export class GraphToCypherMigrator<
 		this.connectionDetails = connectionDetails
 		this.options = neo4jOptions
 		this.client = new Neogma(this.connectionDetails, this.options)
-		this.whiteListSettings =
-			whiteListSettings === "ignore" ? null : whiteListSettings
+		this.setWhiteListSettings(whiteListSettings)
 	}
 
 	public run(): Promise<MigratorReturnType> {
-		if (
-			this.whiteListSettings !== null ||
-			this.whiteListSettings !== undefined
-		) {
+		if (this.whiteListSettings !== null || (this.whiteListSettings)) {
 			this.validate()
 		}
 		return this.runImpl()
 	}
 
-	public setWhiteListSettings(settings: WhiteListSettings) {
+	public setWhiteListSettings(settings: WhiteListSettings | "ignore") {
+		if (settings  === "ignore"){
+			this.whiteListSettings = null
+			return this
+		}
+		if (typeof settings !== "object"){
+			throw new WhiteListError("White list settings must be an object or 'ignore'")
+		}
+		if (!Array.isArray(settings.whiteList)){
+			throw new WhiteListError("White list settings must have a whiteList property which is an array.")
+		}
 		this.whiteListSettings = settings
+		return this
 	}
 
 	private validate() {
